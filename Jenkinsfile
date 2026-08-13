@@ -2,76 +2,76 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = "manojkrishnappa/paymentservice:${GIT_COMMIT}"
+        IMAGE_REPO = "manojkrishnappa/paymentservice"
     }
 
     stages {
 
         stage('Git Checkout') {
             steps {
-                git url: 'https://github.com/ITkannadigaru/paymentservice.git', branch: 'main'
+                git url: 'https://github.com/Micro-Services-Project/paymentservice.git',
+                    branch: 'main'
             }
         }
-
-        stage('Docker Build') {
+        stage('SonarQube Analysis') {
             steps {
-                sh '''
-                    printenv
-                    docker build -t ${IMAGE_NAME} .
-                '''
-            }
-        }
+                script {
+                    def scannerHome = tool 'Sonar'
 
-        stage('Login to Docker Hub') {
-            steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'docker-hub-creds',
-                    usernameVariable: 'DOCKER_USERNAME',
-                    passwordVariable: 'DOCKER_PASSWORD'
-                )]) {
-                    sh "echo $DOCKER_PASSWORD | docker login -u $DOCKER_USERNAME --password-stdin"
+                    withSonarQubeEnv('Sonar') {
+                        sh """
+                            ${scannerHome}/bin/sonar-scanner \
+                            -Dsonar.projectKey=paymentservice \
+                            -Dsonar.projectName=paymentservice \
+                            -Dsonar.sources=.
+                        """
+                    }
                 }
             }
         }
-
-        stage('Push to Docker Hub') {
+        stage('Install Dependencies') {
             steps {
-                sh "docker push ${IMAGE_NAME}"
+                sh 'npm ci'
             }
         }
-
-        stage('Update GitOps Deployment') {
+        stage('Test') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'github-creds',
-                    usernameVariable: 'GIT_USERNAME',
-                    passwordVariable: 'GIT_PASSWORD'
-                )]) {
-                    sh '''
-                        if [ -d "gitops" ]; then
-                            echo "gitops directory exists. Removing it..."
-                            rm -rf gitops
-                        fi
-                        git clone https://$GIT_USERNAME:$GIT_PASSWORD@github.com/ITkannadigaru/GitOps.git gitops
-                        cd gitops/base/paymentservice/
-
-                        git config user.email "jenkins@ci.com"
-                        git config user.name "jenkins"
-
-                        # Update image tag
-                        sed -i "s|image: .*paymentservice.*|image: ${IMAGE_NAME}|g" deployment.yaml
-
-                        git add .
-                        git commit -m "Update paymentservice image to ${IMAGE_NAME}"
-                        git push origin main
-                    '''
+                sh 'npm test'
+            }
+        }
+        stage("Quality Gate") {
+            steps {
+                waitForQualityGate abortPipeline: false, credentialsId: 'Sonar'
+            }
+        }
+        stage("Build") {
+            steps {
+                sh """
+                   printenv
+                   docker build -t ${IMAGE_NAME} .
+                   """
+            }
+        }
+        stage("Scan") {
+            steps {
+                sh """ 
+                   trivy image ${IMAGE_NAME} >> paymentservice-report.txt
+                   """
+                   }
+        }
+        stage ("push Image") {
+            steps {
+                script {
+                    withDockerRegistry(credentialsId: 'Docker') {
+                        sh """
+                           docker push ${IMAGE_NAME}
+                           """
+                    }
                 }
             }
         }
-
     }
-
-    post {
+     post {
         always {
             sh "docker rmi ${IMAGE_NAME} || true"
             sh "docker logout || true"
@@ -84,3 +84,5 @@ pipeline {
         }
     }
 }
+
+
