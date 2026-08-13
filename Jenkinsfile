@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_REPO = "obitomanu/paymentservice:${GIT_COMMIT}""
+        IMAGE_REPO = "obitomanu/paymentservice:${GIT_COMMIT}"
     }
 
     stages {
