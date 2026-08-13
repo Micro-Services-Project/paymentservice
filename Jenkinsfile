@@ -34,11 +34,11 @@ pipeline {
                 waitForQualityGate abortPipeline: false, credentialsId: 'Sonar'
             }
         }
-        stage('Install Dependencies') {
-            steps {
-                sh 'npm ci'
-            }
-        }
+        // stage('Install Dependencies') {
+        //     steps {
+        //         sh 'npm ci'
+        //     }
+        // }
         stage('Test') {
             steps {
                 sh 'npm test'
